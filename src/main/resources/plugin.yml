@@ -1,0 +1,11 @@
+name: SimpleGuilds
+version: '${project.version}'
+main: me.lightning.simpleguilds.SimpleGuilds
+api-version: '1.21'
+
+commands:
+  guild:
+    description: Manage your guild.
+  guildchat:
+    description: Message all members of your guild.
+    aliases: [gc, gchat]

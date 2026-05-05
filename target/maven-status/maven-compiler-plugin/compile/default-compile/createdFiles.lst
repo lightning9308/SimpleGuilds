@@ -1,0 +1,12 @@
+me\lightning\simpleguilds\RequestManager.class
+me\lightning\simpleguilds\commands\GuildCommand$1.class
+me\lightning\simpleguilds\GuildManager$1.class
+me\lightning\simpleguilds\SimpleGuilds.class
+me\lightning\simpleguilds\commands\GuildCommand.class
+me\lightning\simpleguilds\commands\filter.class
+me\lightning\simpleguilds\Request$RequestType.class
+me\lightning\simpleguilds\commands\GuildChatCommand.class
+me\lightning\simpleguilds\GuildManager.class
+me\lightning\simpleguilds\Request.class
+me\lightning\simpleguilds\Guild.class
+me\lightning\simpleguilds\GuildManager$GuildCreateResult.class
