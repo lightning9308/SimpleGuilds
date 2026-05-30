@@ -1,11 +1,8 @@
 package me.lightning.simpleguilds.commands;
 
-import com.google.gson.Gson;
-import me.lightning.simpleguilds.Guild;
-import me.lightning.simpleguilds.GuildManager;
-import me.lightning.simpleguilds.Request;
-import me.lightning.simpleguilds.RequestManager;
+import me.lightning.simpleguilds.*;
 import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.TextComponent;
 import net.kyori.adventure.text.event.ClickEvent;
 import net.kyori.adventure.text.event.HoverEvent;
 import org.bukkit.Bukkit;
@@ -19,172 +16,153 @@ import org.bukkit.util.StringUtil;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 public class GuildCommand implements TabExecutor {
     private static final String PREFIX = "§6§lSimpleGuilds §7§l> " + ChatColor.RESET;
+
     private static final String HELPMSG =
             """
-                    §7--------------------------------------------------
-                    §6                   §lSimpleGuilds§r
-                    §7--------------------------------------------------
-                    §2/guild create <name>§r   §7- Create a new guild
-                    §2/guild disband§r          §7- Disband your guild
-                    §2/guild list§r            §7- List all players in your guild
-                    §2/guild join <name>§r            §7- Request to join a guild
-                    §2/guild invite <player>§r    §7- Invite a player to your guild
-                    §2/guild kick <player>§r   §7- Kick a player from your guild
-                    §2/guild leave§r           §7- Leave your guild
-                    §2/guild help§r            §7- Show this message
-                    §7--------------------------------------------------
-                    """;
-    private static final String NOGUILDMSG = "§4You’re not in a guild. Create one with /guild create <name> or join with /guild join <guild>.";
-    private static final String NOTOWNER = "§4Only the guild owner can do this.";
+            §8§m§l-----------------------------------
+            §6                   §lSimpleGuilds
+            §8§m§l-----------------------------------
+            §2/guild create <name>       §7- §fCreate a new guild
+            §2/guild disband             §7- §fDisband your guild
+            §2/guild list                §7- §fList all players in your guild
+            §2/guild join <name>         §7- §fRequest to join a guild
+            §2/guild invite <player>     §7- §fInvite a player to your guild
+            §2/guild kick <player>       §7- §fKick a player from your guild
+            §2/guild leave               §7- §fLeave your guild
+            §2/guild help                §7- §fShow this message
+            §2/guild motd edit <message>  §7- §fEdit the MOTD (\\n for new line)
+            §2/guild motd apply          §7- §fApply the MOTD to your guild
+            §8§m§l-----------------------------------
+            """;
 
+    private static final String NOGUILDMSG = "§cYou’re not in a guild. Create one with /guild create <name> or join with /guild join <guild>.";
 
-    private static String guildList(Guild guild) {
+    private static final String NOTOWNER = "§cOnly the guild owner can do this.";
 
-        String owner = Bukkit.getOfflinePlayer(guild.getOwner()).getName();
-        String numMembers = String.valueOf(guild.getNumMembers() - 1);
-        //get all guild members
-        List<String> membersList = new ArrayList<>(guild.getMembers().stream()
-                .map(uuid -> Bukkit.getOfflinePlayer(uuid).getName())
-                .toList());
-        membersList.remove(owner);
+    private static final Map<String, String> unsavedMOTD = new HashMap<>();
 
-        String members = String.join(", ", membersList);
-
-
-        if (numMembers.equalsIgnoreCase("0")) {
-            return "§7---------------------------------------------\n" +
-                    " §6§l                  " + guild.getName() + "\n" +
-                    "§7---------------------------------------------\n" +
-                    "§c§lOwner§7: §f"+owner+"\n" +
-                    "§7---------------------------------------------";
-        } else {
-            return
-                    "§7---------------------------------------------\n" +
-                    " §6                       §l" + guild.getName()+"\n" +
-                    "§7---------------------------------------------\n" +
-                    "§c§lOwner§7: §f"+owner+"\n" +
-                    "§2§lMembers§7:§f "+members+"\n" +
-                    "§7---------------------------------------------";
-        }
-    }
-    private static final List<String> GUILD_SUBCOMMANDS = List.of(
-            "create", "disband", "list", "join", "invite",
-            "accept", "deny", "kick", "leave", "help"
-    );
+    Cooldown motdCooldown = new Cooldown();
 
     @Override
     public boolean onCommand(@NotNull CommandSender commandSender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
 
-        if (!(commandSender instanceof Player sender)) {
+        if (!(commandSender instanceof Player player)) {
             commandSender.sendMessage("Only players can execute this command");
             return true;
         }
         if ((args.length < 1)) {
-            sender.sendMessage(HELPMSG);
+            player.sendMessage(HELPMSG);
             return true;
         }
 
-        switch (args[0].toLowerCase()) {
+        String subCommand = args[0].toLowerCase();
+
+        switch (subCommand) {
             case "create" -> {
                 //player didn't enter the guild name
                 if (args.length < 2) {
-                    sender.sendMessage(PREFIX + "§4Usage: /guild create <name>");
+                    player.sendMessage(PREFIX + "§4Usage: /guild create <name>");
                     return true;
                 }
                 //player already have a guild
-                if (GuildManager.getPlayerGuild(sender) != null) {
-                    sender.sendMessage(PREFIX + "§4You’re already part of a guild. Leave it before creating another.");
+                if (GuildManager.getPlayerGuild(player) != null) {
+                    player.sendMessage(PREFIX + "§cYou’re already part of a guild. Leave it before creating another.");
                     return true;
                 }
-                //Create the guild
+                //create the guild
                 String guildName = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
-                GuildManager.GuildCreateResult result = GuildManager.createGuild(guildName,sender.getUniqueId());
+                GuildManager.GuildCreateResult result = GuildManager.createGuild(guildName,player.getUniqueId());
 
                 switch (result) {
-                    case NAME_TOO_SHORT -> sender.sendMessage(PREFIX + "§4Guild name must be at least 3 characters long.");
-                    case NAME_TOO_LONG -> sender.sendMessage(PREFIX + "§4Guild name cannot be longer than 30 characters.");
-                    case NAME_TAKEN -> sender.sendMessage(PREFIX + "§4A guild with that name already exists.");
-                    case SUCCESS -> sender.sendMessage(PREFIX + "§2Your guild has been created successfully!");
+                    case NAME_TOO_SHORT -> player.sendMessage(PREFIX + "§cGuild name must be at least 3 characters long.");
+                    case NAME_TOO_LONG -> player.sendMessage(PREFIX + "§cGuild name cannot be longer than 30 characters.");
+                    case NAME_TAKEN -> player.sendMessage(PREFIX + "§cA guild with that name already exists.");
+                    case SUCCESS -> player.sendMessage(PREFIX + "§2Your guild has been created successfully!");
                 }
                 return true;
             }
+
             case "disband" -> {
                 //check if player has a guild
-                Guild guild = GuildManager.getPlayerGuild(sender);
+                Guild guild = GuildManager.getPlayerGuild(player);
                 if (guild == null) {
-                    sender.sendMessage(PREFIX + NOGUILDMSG);
+                    player.sendMessage(PREFIX + NOGUILDMSG);
                     return true;
                 }
                 //check if player is the owner of the guild
-                if (!guild.getOwner().equals(sender.getUniqueId())) {
-                    sender.sendMessage(PREFIX + NOTOWNER);
+                if (!guild.getOwner().equals(player.getUniqueId())) {
+                    player.sendMessage(PREFIX + NOTOWNER);
                     return true;
                 }
                 //Delete the guild
                 GuildManager.deleteGuild(guild);
-                sender.sendMessage(PREFIX + "§2The guild has been disbanded successfully.");
-                guild.broadcast(PREFIX + "§7Your guild has been disbanded.", sender);
+                player.sendMessage(PREFIX + "§2The guild has been disbanded successfully.");
+                guild.broadcast(PREFIX + "§7Your guild has been disbanded.", player);
                 return true;
 
             }
+
             case "list"   -> {
+                Guild guild = GuildManager.getPlayerGuild(player);
+
                 //check if player have a guild
-                if (GuildManager.getPlayerGuild(sender) == null) {
-                    sender.sendMessage(PREFIX + NOGUILDMSG);
+                if (guild == null) {
+                    player.sendMessage(PREFIX + NOGUILDMSG);
                     return true;
                 }
-                sender.sendMessage(guildList(GuildManager.getPlayerGuild(sender)));
+
+                player.sendMessage(GuildManager.guildList(guild));
                 return true;
 
             }
+
             case "join" -> {
                 //player didn't enter the guild name
                 if (args.length < 2) {
-                    sender.sendMessage(PREFIX + "§4Please enter the guild name you want to join.");
+                    player.sendMessage(PREFIX + "§cPlease enter the guild name you want to join.");
                     return true;
                 }
                 //player already have a guild
-                if (GuildManager.getPlayerGuild(sender) != null) {
-                    sender.sendMessage(PREFIX + "§4You’re already part of a guild. Leave it before joining another.");
+                if (GuildManager.getPlayerGuild(player) != null) {
+                    player.sendMessage(PREFIX + "§cYou’re already part of a guild. Leave it before joining another.");
                     return true;
                 }
                 //check if that guild exists
                 String guildName = String.join(" ", Arrays.copyOfRange(args, 1, args.length));
                 Guild guild = GuildManager.getGuild(guildName);
                 if (guild == null) {
-                    sender.sendMessage(PREFIX + "§4That guild doesn’t exist.");
+                    player.sendMessage(PREFIX + "§cThat guild doesn’t exist.");
                     return true;
                 }
                 //send the guild owner a request to join the guild
                 Player owner = Bukkit.getPlayer(guild.getOwner());
                 if (owner != null) {
-                    Request request = new Request(sender.getUniqueId(),owner.getUniqueId(), Request.RequestType.JOIN,guild.getName());
+                    Request request = new Request(player.getUniqueId(),owner.getUniqueId(), Request.RequestType.JOIN,guild.getName());
                     RequestManager.addRequest(request);
 
-                    sender.sendMessage(PREFIX + "§7Your request to join " + "§e" + guild.getName() + " §7has been sent.");
-                    Component message = Component.text(PREFIX + "§e" + sender.getName() + " §7wants to join your guild! ")
-                                    .append(Component.text("§a[Accept]").clickEvent(ClickEvent.runCommand("/guild accept " + sender.getName()))
+                    player.sendMessage(PREFIX + "§7Your request to join " + "§e" + guild.getName() + " §7has been sent.");
+                    TextComponent message = Component.text(PREFIX + "§e" + player.getName() + " §7wants to join your guild! ")
+                                    .append(Component.text("§a[Accept]").clickEvent(ClickEvent.runCommand("/guild accept " + player.getName()))
                                     .hoverEvent(HoverEvent.showText(Component.text("Click to accept")))
                                     .append(Component.text(" §7| ")
                                     .append(Component.text("§c[Deny]")
-                                    .clickEvent(ClickEvent.runCommand("/guild deny " + sender.getName()))
+                                    .clickEvent(ClickEvent.runCommand("/guild deny " + player.getName()))
                                     .hoverEvent(HoverEvent.showText(Component.text("Click to deny"))))));
 
-                    owner.sendMessage(message);
+                    SimpleGuilds.adventure().player(owner).sendMessage(message);
                 }
 
 
             }
+
             case "invite" -> {
                 //didn't enter the player ign
                 if (args.length < 2) {
-                    sender.sendMessage(PREFIX + "§4Please enter the player name you want to invite.");
+                    player.sendMessage(PREFIX + "§cPlease enter the player name you want to invite.");
                     return true;
                 }
                 //make sure this player is online
@@ -192,58 +170,59 @@ public class GuildCommand implements TabExecutor {
                 Player invitedPlayer = Bukkit.getPlayer(playerIgn);
 
                 if (invitedPlayer == null) {
-                    sender.sendMessage(PREFIX + "§4You can’t invite this player while they’re offline.");
+                    player.sendMessage(PREFIX + "§cYou can’t invite this player while they’re offline.");
                     return true;
                 }
                 //invited player already have a guild
                 if (GuildManager.getPlayerGuild(invitedPlayer) != null) {
-                    sender.sendMessage(PREFIX + "§4This player is already part of a guild.");
+                    player.sendMessage(PREFIX + "§cThis player is already part of a guild.");
                     return true;
                 }
                 //make sure the sender have a guild
-                if (GuildManager.getPlayerGuild(sender) == null) {
-                    sender.sendMessage(PREFIX + NOGUILDMSG);
+                if (GuildManager.getPlayerGuild(player) == null) {
+                    player.sendMessage(PREFIX + NOGUILDMSG);
                     return true;
                 }
-                Guild guild = GuildManager.getPlayerGuild(sender);
+                Guild guild = GuildManager.getPlayerGuild(player);
                 //make sure the sender is the owner of the guild
-                if (!(guild.getOwner().equals(sender.getUniqueId()))) {
-                    sender.sendMessage(PREFIX + NOTOWNER);
+                if (!(guild.getOwner().equals(player.getUniqueId()))) {
+                    player.sendMessage(PREFIX + NOTOWNER);
                     return true;
                 }
                 //send the invitedPlayer a request to join the guild, and they can accept or deny by clicking the msg
-                Request request = new Request(sender.getUniqueId(),invitedPlayer.getUniqueId(), Request.RequestType.INVITE,guild.getName());
+                Request request = new Request(player.getUniqueId(),invitedPlayer.getUniqueId(), Request.RequestType.INVITE,guild.getName());
                 RequestManager.addRequest(request);
 
-                sender.sendMessage(PREFIX + "§e" + invitedPlayer.getName() + " §7has been invited to join your guild.");
-                Component messege = Component.text(PREFIX + "§r§7You have been invited to join the guild " + "§e" + guild.getName() + " ")
+                player.sendMessage(PREFIX + "§e" + invitedPlayer.getName() + " §7has been invited to join your guild.");
+                TextComponent message = Component.text(PREFIX + "§r§7You have been invited to join the guild " + "§e" + guild.getName() + " ")
                                                 .append(Component.text("§a[Accept]").clickEvent(ClickEvent.runCommand("/guild accept"))
                                                 .hoverEvent(HoverEvent.showText(Component.text("Click to accept")))
                                                 .append(Component.text(" §7| ")
                                                 .append(Component.text("§c[Deny]")
                                                 .clickEvent(ClickEvent.runCommand("/guild deny"))
                                                 .hoverEvent(HoverEvent.showText(Component.text("Click to deny"))))));
-                invitedPlayer.sendMessage(messege);
+                SimpleGuilds.adventure().player(invitedPlayer).sendMessage(message);
 
 
             }
+
             case "accept" -> {
                 //check if the player have any ongoing requests
-                Request request = RequestManager.getRequest(sender.getUniqueId());
+                Request request = RequestManager.getRequest(player.getUniqueId());
                 if (request == null) {
-                    sender.sendMessage(PREFIX + "§4There are no pending invite or join requests");
+                    player.sendMessage(PREFIX + "§cThere are no pending invite or join requests");
                     return true;
                 }
                 //invite request
                 if (args.length == 1 && request.getType() == Request.RequestType.INVITE) {
                     //player already have a guild
-                    if (GuildManager.getPlayerGuild(sender) != null) {
-                        sender.sendMessage(PREFIX + "§4You are already part of a guild.");
+                    if (GuildManager.getPlayerGuild(player) != null) {
+                        player.sendMessage(PREFIX + "§cYou are already part of a guild.");
                         return true;
                     }
                     //check if guild still exists
                     if (GuildManager.getGuild(request.getGuildName()) == null) {
-                        sender.sendMessage(PREFIX + "§4That guild no longer exists.");
+                        player.sendMessage(PREFIX + "§cThat guild no longer exists.");
                         return true;
                     }
 
@@ -257,7 +236,7 @@ public class GuildCommand implements TabExecutor {
 
                     //Add the player
                     Guild guild = GuildManager.getGuild(request.getGuildName());
-                    RequestManager.removeRequest(sender.getUniqueId());
+                    RequestManager.removeRequest(player.getUniqueId());
                     guild.addMember(request.getTarget());
                     guild.broadcast(PREFIX + "§e" + Bukkit.getOfflinePlayer(request.getTarget()).getName() + " §7has joined the guild.", Bukkit.getPlayer(request.getTarget()));
                     return true;
@@ -268,22 +247,22 @@ public class GuildCommand implements TabExecutor {
 
                     //make sure it's the right player
                     if (!(senderIGN.equalsIgnoreCase(Bukkit.getOfflinePlayer(request.getSender()).getName()))) {
-                        sender.sendMessage(PREFIX + "§4That player has not requested to join your guild");
+                        player.sendMessage(PREFIX + "§cThat player has not requested to join your guild");
                         return true;
                     }
                     //Guild check
                     if (GuildManager.getPlayerGuild(Bukkit.getPlayer(request.getSender())) != null) {
-                        sender.sendMessage(PREFIX + "§4That player has already joined another guild.");
+                        player.sendMessage(PREFIX + "§cThat player has already joined another guild.");
                         return true;
                     }
                     //make sure that guild still exists
                     if (GuildManager.getGuild(request.getGuildName()) == null) {
-                        sender.sendMessage(PREFIX + "§4That guild no longer exists.");
+                        player.sendMessage(PREFIX + "§cThat guild no longer exists.");
                         return true;
                     }
                     //make sure the player is the owner of the guild
-                    if (!(GuildManager.getGuild(request.getGuildName()).getOwner().equals(sender.getUniqueId()))) {
-                        sender.sendMessage(PREFIX + NOTOWNER);
+                    if (!(GuildManager.getGuild(request.getGuildName()).getOwner().equals(player.getUniqueId()))) {
+                        player.sendMessage(PREFIX + NOTOWNER);
                         return true;
                     }
                     if (Bukkit.getPlayer(request.getSender()) != null) {
@@ -295,24 +274,25 @@ public class GuildCommand implements TabExecutor {
                     }
                     //add that player to the guild
                     Guild guild = GuildManager.getGuild(request.getGuildName());
-                    RequestManager.removeRequest(sender.getUniqueId());
+                    RequestManager.removeRequest(player.getUniqueId());
                     guild.addMember(request.getSender());
                     guild.broadcast(PREFIX + "§e" + Bukkit.getOfflinePlayer(request.getSender()).getName() + " §7has joined the guild.",Bukkit.getPlayer(request.getSender()));
                     return true;
                 }
                 //invalid usage
                 if (args.length < 2 && request.getType() == Request.RequestType.JOIN) {
-                    sender.sendMessage(PREFIX + "§4Please enter the name of the player you want to accept.");
+                    player.sendMessage(PREFIX + "§cPlease enter the name of the player you want to accept.");
                     return true;
                 }
-                sender.sendMessage(HELPMSG);
+                player.sendMessage(HELPMSG);
                 return true;
             }
+
             case "deny" -> {
                 //check if the player have any ongoing requests
-                Request request = RequestManager.getRequest(sender.getUniqueId());
+                Request request = RequestManager.getRequest(player.getUniqueId());
                 if (request == null) {
-                    sender.sendMessage(PREFIX + "§4There are no pending invite or join requests");
+                    player.sendMessage(PREFIX + "§cThere are no pending invite or join requests");
                     return true;
                 }
                 //invite request
@@ -323,7 +303,7 @@ public class GuildCommand implements TabExecutor {
                     }
 
                     //remove the request
-                    RequestManager.removeRequest(sender.getUniqueId());
+                    RequestManager.removeRequest(player.getUniqueId());
                     return true;
                 }
                 if (args.length == 2 && request.getType() == Request.RequestType.JOIN) {
@@ -332,13 +312,13 @@ public class GuildCommand implements TabExecutor {
 
                     //make sure it's the right player
                     if (!(senderIGN.equalsIgnoreCase(Bukkit.getOfflinePlayer(request.getSender()).getName().toLowerCase()))) {
-                        sender.sendMessage(PREFIX + "§4That player has not requested to join your guild");
+                        player.sendMessage(PREFIX + "§cThat player has not requested to join your guild");
                         return true;
                     }
 
                     //make sure the player is the owner of the guild
-                    if (!(GuildManager.getGuild(request.getGuildName()).getOwner().equals(sender.getUniqueId()))) {
-                        sender.sendMessage(PREFIX + NOTOWNER);
+                    if (!(GuildManager.getGuild(request.getGuildName()).getOwner().equals(player.getUniqueId()))) {
+                        player.sendMessage(PREFIX + NOTOWNER);
                         return true;
                     }
 
@@ -346,77 +326,159 @@ public class GuildCommand implements TabExecutor {
                         Bukkit.getPlayer(request.getTarget()).sendMessage(PREFIX + "§7You have denied the join request.");
                     }
                     //remove the request
-                    RequestManager.removeRequest(sender.getUniqueId());
+                    RequestManager.removeRequest(player.getUniqueId());
                     return true;
                 }
                 //invalid usage
                 if (args.length < 2 && request.getType() == Request.RequestType.JOIN) {
-                    sender.sendMessage(PREFIX + "§4Please enter the name of the player you want to deny.");
+                    player.sendMessage(PREFIX + "§cPlease enter the name of the player you want to deny.");
                     return true;
                 }
-                sender.sendMessage(HELPMSG);
+                player.sendMessage(HELPMSG);
                 return true;
             }
+
             case "kick" -> {
                 //didnt provide the player to kick
                 if (args.length < 2) {
-                    sender.sendMessage(PREFIX + "§4Please enter the name of the player you want to kick.");
+                    player.sendMessage(PREFIX + "§cPlease enter the name of the player you want to kick.");
                     return true;
                 }
-                OfflinePlayer player = Bukkit.getOfflinePlayer(args[1]);
+                OfflinePlayer kickedPlayer = Bukkit.getOfflinePlayer(args[1]);
+
                 //dont have a guild
-                Guild guild = GuildManager.getPlayerGuild(sender);
+                Guild guild = GuildManager.getPlayerGuild(player);
                 if (guild == null) {
-                    sender.sendMessage(PREFIX + NOGUILDMSG);
+                    player.sendMessage(PREFIX + NOGUILDMSG);
                     return true;
                 }
                 //not the owner of the guild
-                if (!(guild.getOwner().equals(sender.getUniqueId()))) {
-                    sender.sendMessage(PREFIX + NOTOWNER);
+                if (!(guild.getOwner().equals(player.getUniqueId()))) {
+                    player.sendMessage(PREFIX + NOTOWNER);
                     return true;
                 }
                 //not in the guild
-                if (!(guild.hasMember(player.getUniqueId()))) {
-                    sender.sendMessage(PREFIX + "§4This player isn’t in your guild.");
+                if (!(guild.hasMember(kickedPlayer.getUniqueId()))) {
+                    player.sendMessage(PREFIX + "§cThis player isn’t in your guild.");
                     return true;
                 }
                 //kicking the guild owner
-                if (player.getUniqueId().equals(guild.getOwner())) {
-                    sender.sendMessage(PREFIX + "§4You can’t kick yourself.");
+                if (kickedPlayer.getUniqueId().equals(guild.getOwner())) {
+                    player.sendMessage(PREFIX + "§cYou can’t kick yourself.");
                     return true;
                 }
                 //kick the player
-                if (player.isOnline()) {
-                    Player onlinePlayer = player.getPlayer();
+                if (kickedPlayer.isOnline()) {
+                    Player onlinePlayer = kickedPlayer.getPlayer();
                     onlinePlayer.sendMessage(PREFIX + "§7You have been kicked from §e" + guild.getName());
                 }
-                guild.removeMember(player.getUniqueId());
-                sender.sendMessage(PREFIX + "§7You have kicked §e" + player.getName());
-                guild.broadcast(PREFIX + "§e" + player.getName() + " §7has been kicked from the guild.", sender);
+                guild.removeMember(kickedPlayer.getUniqueId());
+                player.sendMessage(PREFIX + "§7You have kicked §e" + kickedPlayer.getName());
+                guild.broadcast(PREFIX + "§e" + kickedPlayer.getName() + " §7has been kicked from the guild.", player);
                 return true;
 
             }
+
             case "leave" -> {
                 //no guild
-                Guild guild = GuildManager.getPlayerGuild(sender);
+                Guild guild = GuildManager.getPlayerGuild(player);
                 if (guild == null) {
-                    sender.sendMessage(PREFIX + NOGUILDMSG);
+                    player.sendMessage(PREFIX + NOGUILDMSG);
                     return true;
                 }
                 //delete if the owner left the guild
-                if (guild.getOwner().equals(sender.getUniqueId())) {
+                if (guild.getOwner().equals(player.getUniqueId())) {
                     GuildManager.deleteGuild(guild);
-                    guild.broadcast(PREFIX + "§7Your guild has been disbanded.", sender);
-                    sender.sendMessage(PREFIX + "§7You were the guild owner — the guild has been disbanded.");
+                    guild.broadcast(PREFIX + "§7Your guild has been disbanded.", player);
+                    player.sendMessage(PREFIX + "§7You were the guild owner — the guild has been disbanded.");
                     return true;
                 }
                 //Remove the player
-                guild.removeMember(sender.getUniqueId());
-                sender.sendMessage(PREFIX + "§7You have left the guild.");
-                guild.broadcast(PREFIX + "§e" + sender.getName() + " §7has left the guild.");
+                guild.removeMember(player.getUniqueId());
+                player.sendMessage(PREFIX + "§7You have left the guild.");
+                guild.broadcast(PREFIX + "§e" + player.getName() + " §7has left the guild.");
                 return true;
             }
-            default -> sender.sendMessage(HELPMSG);
+
+            case "motd" -> {
+
+                if ((args.length < 2)) {
+                    player.sendMessage(HELPMSG);
+                    return true;
+                }
+
+                String motdSubCommands = args[1].toLowerCase();
+                Guild guild = GuildManager.getPlayerGuild(player);
+
+
+                switch (motdSubCommands) {
+
+                    case "edit" -> {
+                        //no guild
+                        if (guild == null) {
+                            player.sendMessage(PREFIX + NOGUILDMSG);
+                            return true;
+                        }
+
+                        //not owner
+                        if (!guild.getOwner().equals(player.getUniqueId())) {
+                            player.sendMessage(PREFIX + NOTOWNER);
+                            return true;
+                        }
+
+                        String message = String.join(" ", Arrays.copyOfRange(args, 2, args.length));
+
+                        //no message
+                        if (message.isBlank()) {
+                            player.sendMessage(PREFIX + "§cPlease provide a message.");
+                            return true;
+                        }
+
+                        message = message.replace("\\n", "\n");
+                        message = ChatColor.translateAlternateColorCodes('&', message);
+
+                        player.sendMessage(message);
+                        unsavedMOTD.put(guild.getName(), message);
+                        return true;
+                    }
+
+                    case "apply" -> {
+                        //no guild
+                        if (guild == null) {
+                            player.sendMessage(PREFIX + NOGUILDMSG);
+                            return true;
+                        }
+
+                        //not owner
+                        if (!guild.getOwner().equals(player.getUniqueId())) {
+                            player.sendMessage(PREFIX + NOTOWNER);
+                            return true;
+                        }
+
+                        String message = unsavedMOTD.get(guild.getName());
+                        //no motd
+                        if (message == null || message.isBlank()) {
+                            player.sendMessage(PREFIX + "§cSet a MOTD first using /guild motd edit <message>.");
+                            return true;
+                        }
+
+                        if (!motdCooldown.isOver(player)) {
+                            player.sendMessage(PREFIX + "§cPlease wait before updating the motd again.");
+                            return true;
+                        }
+                        motdCooldown.start(player, 30);
+                        guild.setMOTD(message);
+                        player.sendMessage(PREFIX + "§aGuild MOTD updated!");
+                        unsavedMOTD.remove(guild.getName());
+                        return true;
+                    }
+
+                    default -> player.sendMessage(HELPMSG);
+                }
+                return true;
+            }
+
+            default -> player.sendMessage(HELPMSG);
         }
         return true;
     }
@@ -425,15 +487,21 @@ public class GuildCommand implements TabExecutor {
 
 
     @Override
-    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender,
-                                                @NotNull Command command,
-                                                @NotNull String label,
-                                                @NotNull String[] args) {
+    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+
+        final List<String> GUILD_SUBCOMMANDS = List.of(
+                "create", "disband", "list", "join", "invite",
+                "accept", "deny", "kick", "leave", "help", "motd"
+        );
+
         final List<String> validArgs = new ArrayList<>();
 
         if (args.length == 1) {
             StringUtil.copyPartialMatches(args[0],GUILD_SUBCOMMANDS,validArgs);
             return validArgs;
+        }
+        if (args[0].equalsIgnoreCase("motd") && args.length == 2) {
+            return List.of("edit", "apply");
         }
         return List.of();
     }

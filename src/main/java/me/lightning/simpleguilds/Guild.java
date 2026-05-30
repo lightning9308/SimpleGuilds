@@ -12,6 +12,7 @@ public class Guild {
     UUID owner;
     int numMembers;
     Set<UUID> members = new HashSet<>();
+    String MOTD;
 
 
     public void removeMember(UUID player) {
@@ -77,5 +78,14 @@ public class Guild {
 
         members.add(this.owner);
         this.numMembers = members.size();
+    }
+
+    public void setMOTD(String message) {
+        MOTD = message;
+        GuildManager.saveGuilds();
+    }
+
+    public String getMOTD() {
+        return MOTD;
     }
 }

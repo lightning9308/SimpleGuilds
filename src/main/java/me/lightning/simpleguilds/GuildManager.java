@@ -3,13 +3,12 @@ package me.lightning.simpleguilds;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 
 import java.io.*;
 import java.lang.reflect.Type;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 
 public class GuildManager {
@@ -66,6 +65,36 @@ public class GuildManager {
         return guildSet;
     }
 
+    public static String guildList(Guild guild) {
+
+        String owner = Bukkit.getOfflinePlayer(guild.getOwner()).getName();
+
+        String numMembers = String.valueOf(guild.getNumMembers() - 1);
+
+        //get all guild members
+        List<String> membersList = new ArrayList<>(guild.getMembers().stream().map(uuid -> Bukkit.getOfflinePlayer(uuid).getName()).toList());
+        membersList.remove(owner);
+
+        String members = String.join(", ", membersList);
+
+
+        if (numMembers.equalsIgnoreCase("0")) {
+            return "§7---------------------------------------------\n" +
+                    " §6§l                  " + guild.getName() + "\n" +
+                    "§7---------------------------------------------\n" +
+                    "§c§lOwner§7: §f"+owner+"\n" +
+                    "§7---------------------------------------------";
+        } else {
+            return
+                    "§7---------------------------------------------\n" +
+                            " §6                       §l" + guild.getName()+"\n" +
+                            "§7---------------------------------------------\n" +
+                            "§c§lOwner§7: §f"+owner+"\n" +
+                            "§2§lMembers§7:§f "+members+"\n" +
+                            "§7---------------------------------------------";
+        }
+    }
+
     public static void saveGuilds() {
         try {
             if (!file.getParentFile().exists()) {
@@ -86,6 +115,7 @@ public class GuildManager {
             e.printStackTrace();
         }
     }
+
     public static void loadGuilds() {
         if (!(file.exists())) {
             return;
@@ -99,6 +129,16 @@ public class GuildManager {
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+    public static void sendMOTD(Player player) {
+        Guild guild = getPlayerGuild(player);
+
+        if (guild == null) return;
+        if (guild.getMOTD() == null) return;
+        if (guild.getMOTD().isBlank()) return;
+
+        player.sendMessage(guild.getMOTD());
     }
 }
 
